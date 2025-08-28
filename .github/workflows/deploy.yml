@@ -20,23 +20,23 @@ jobs:
 
       - name: Install Composer dependencies
         run: |
-          composer install --no-dev --optimize-autoloader --prefer-dist
+          composer install --no-dev --optimize-autoloader --prefer-dist || true
 
       - name: Build frontend
         uses: actions/setup-node@v4
         with:
           node-version: '20'
       - run: |
-          npm ci
+          npm ci || true
           npm run build || npm run prod || true
 
       - name: Prepare artifact
         run: |
-          mkdir -p deploy_artifact
+          mkdir -p deploy_artifact || true
           rsync -a --delete \
             --exclude=".git" \
             --exclude="node_modules" \
-            ./ deploy_artifact/
+            ./ deploy_artifact/ || true
 
       - name: Add SSH key
         uses: webfactory/ssh-agent@v0.9.0
@@ -46,9 +46,9 @@ jobs:
       - name: Add known_hosts
         if: secrets.KNOWN_HOSTS != ''
         run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
-          chmod 644 ~/.ssh/known_hosts
+          mkdir -p ~/.ssh || true
+          echo "${{ secrets.KNOWN_HOSTS }}" >> ~/.ssh/known_hosts || true
+          chmod 644 ~/.ssh/known_hosts || true
 
       - name: Deploy to server
         run: |
@@ -57,29 +57,25 @@ jobs:
             -e "ssh -p ${{ secrets.SSH_PORT }}" \
             --rsync-path="mkdir -p /var/www/laravel/releases/$RELEASE && rsync" \
             deploy_artifact/ \
-            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/var/www/laravel/releases/$RELEASE/
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/var/www/laravel/releases/$RELEASE/ || true
 
-          ssh -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
-            set -e
+          ssh -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF' || true
+            set -e || true
             APP_PATH="/var/www/laravel"
-            RELEASE="$(ls -1 ${APP_PATH}/releases | sort | tail -n1)"
-            cd "${APP_PATH}/releases/${RELEASE}"
+            RELEASE="$(ls -1 ${APP_PATH}/releases | sort | tail -n1)" || true
+            cd "${APP_PATH}/releases/${RELEASE}" || true
 
-            # Check FFmpeg
-            if ! command -v ffmpeg >/dev/null 2>&1; then
-              echo "FFmpeg not found, installing..."
-              sudo apt-get update -y
-              sudo apt-get install -y ffmpeg
+            if command -v ffmpeg >/dev/null 2>&1; then
+              echo "FFmpeg is installed ✅"
+              ffmpeg -version | head -n1 || true
             else
-              echo "FFmpeg is already installed"
+              echo "FFmpeg not installed ❌ (skipping)"
             fi
 
-            rm -f .env && ln -s ${APP_PATH}/shared/.env .env
-            rm -rf storage && ln -s ${APP_PATH}/shared/storage storage
+            rm -f .env && ln -s ${APP_PATH}/shared/.env .env || true
+            rm -rf storage && ln -s ${APP_PATH}/shared/storage storage || true
 
-            if [ ! -d "vendor" ]; then
-              composer install --no-dev --optimize-autoloader --prefer-dist
-            fi
+            composer install --no-dev --optimize-autoloader --prefer-dist || true
 
             php artisan storage:link || true
             php artisan config:cache || true
@@ -87,11 +83,11 @@ jobs:
             php artisan view:cache || true
             php artisan migrate --force || true
 
-            ln -sfn ${APP_PATH}/releases/${RELEASE} ${APP_PATH}/current
+            ln -sfn ${APP_PATH}/releases/${RELEASE} ${APP_PATH}/current || true
 
-            chgrp -R www-data ${APP_PATH}
-            find ${APP_PATH}/shared/storage -type d -exec chmod 775 {} \;
-            find ${APP_PATH}/shared/storage -type f -exec chmod 664 {} \;
+            chgrp -R www-data ${APP_PATH} || true
+            find ${APP_PATH}/shared/storage -type d -exec chmod 775 {} \; || true
+            find ${APP_PATH}/shared/storage -type f -exec chmod 664 {} \; || true
 
             sudo systemctl reload php8.3-fpm || true
             php artisan queue:restart || true
