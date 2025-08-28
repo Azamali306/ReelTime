@@ -1,0 +1,98 @@
+name: Deploy to Azure VM
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, pdo_mysql, curl, dom, xml, zip
+
+      - name: Install Composer dependencies
+        run: |
+          composer install --no-dev --optimize-autoloader --prefer-dist
+
+      - name: Build frontend
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: |
+          npm ci
+          npm run build || npm run prod || true
+
+      - name: Prepare artifact
+        run: |
+          mkdir -p deploy_artifact
+          rsync -a --delete \
+            --exclude=".git" \
+            --exclude="node_modules" \
+            ./ deploy_artifact/
+
+      - name: Add SSH key
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_KEY }}
+
+      - name: Add known_hosts
+        if: secrets.KNOWN_HOSTS != ''
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: Deploy to server
+        run: |
+          RELEASE=$(date +%Y%m%d%H%M%S)
+          rsync -az --delete \
+            -e "ssh -p ${{ secrets.SSH_PORT }}" \
+            --rsync-path="mkdir -p /var/www/laravel/releases/$RELEASE && rsync" \
+            deploy_artifact/ \
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/var/www/laravel/releases/$RELEASE/
+
+          ssh -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
+            set -e
+            APP_PATH="/var/www/laravel"
+            RELEASE="$(ls -1 ${APP_PATH}/releases | sort | tail -n1)"
+            cd "${APP_PATH}/releases/${RELEASE}"
+
+            # Check FFmpeg
+            if ! command -v ffmpeg >/dev/null 2>&1; then
+              echo "FFmpeg not found, installing..."
+              sudo apt-get update -y
+              sudo apt-get install -y ffmpeg
+            else
+              echo "FFmpeg is already installed"
+            fi
+
+            rm -f .env && ln -s ${APP_PATH}/shared/.env .env
+            rm -rf storage && ln -s ${APP_PATH}/shared/storage storage
+
+            if [ ! -d "vendor" ]; then
+              composer install --no-dev --optimize-autoloader --prefer-dist
+            fi
+
+            php artisan storage:link || true
+            php artisan config:cache || true
+            php artisan route:cache || true
+            php artisan view:cache || true
+            php artisan migrate --force || true
+
+            ln -sfn ${APP_PATH}/releases/${RELEASE} ${APP_PATH}/current
+
+            chgrp -R www-data ${APP_PATH}
+            find ${APP_PATH}/shared/storage -type d -exec chmod 775 {} \;
+            find ${APP_PATH}/shared/storage -type f -exec chmod 664 {} \;
+
+            sudo systemctl reload php8.3-fpm || true
+            php artisan queue:restart || true
+          EOF
