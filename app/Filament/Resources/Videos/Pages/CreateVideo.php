@@ -17,17 +17,17 @@ class CreateVideo extends CreateRecord
             return;
         }
 
-        $service = app(VideoProcessingService::class);
+        // $service = app(VideoProcessingService::class);
 
         // Generate thumbnail from original first
-        $thumbnail = $service->thumbnail($record->url);
+        // $thumbnail = $service->thumbnail($record->url);
 
         // Compress and point url to processed file
-        $processed = $service->compress($record->url);
+        // $processed = $service->compress($record->url);
 
-        $record->update([
-            'url' => $processed,
-            'thumbnail' => $thumbnail,
-        ]);
+        // $record->update([
+        //     'url' => $processed,
+        //     'thumbnail' => $thumbnail,
+        // ]);
     }
 }

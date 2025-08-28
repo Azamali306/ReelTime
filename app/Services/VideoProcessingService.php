@@ -18,25 +18,16 @@ class VideoProcessingService
 
         @mkdir(dirname($output), 0775, true);
 
-        $ffmpeg = '/opt/homebrew/bin/ffmpeg'; // adjust if Intel
+    
         $cmd = [
-            $ffmpeg, '-y', '-i', $input,
+            'ffmpeg', '-y', '-i', $input,
             '-vcodec', 'libx264', '-preset', 'fast', '-crf', '28',
             '-acodec', 'aac', '-b:a', '128k',
             $output,
         ];
 
-        // ffmpeg command: re-encode with libx264 and AAC, target 2.5Mbps, fast preset
-        // $cmd = [
-        //     'ffmpeg', '-y', '-i', $input,
-        //     '-vcodec', 'libx264', '-preset', 'fast', '-crf', '28',
-        //     '-acodec', 'aac', '-b:a', '128k',
-        //     $output,
-        // ];
-
-        // Use Symfony Process via facade in Laravel 12
         Process::timeout(0)->run($cmd);
- 
+
         return $outputRel;
     }
 
