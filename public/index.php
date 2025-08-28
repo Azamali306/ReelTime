@@ -17,6 +17,4 @@ require __DIR__.'/../vendor/autoload.php';
 /** @var Application $app */
 $app = require_once __DIR__.'/../bootstrap/app.php';
 
-dump(shell_exec('/opt/homebrew/bin/ffmpeg'));
-
 $app->handleRequest(Request::capture());
